@@ -1,37 +1,48 @@
-#include "Arduino.h"                                 // common Arduion constants and definitions
-#include "Nunchuck.h"                                // Wii nunchuck library
+#include "Arduino.h"
+#include "Nunchuck.h"
 #include <Wire.h> 
 #include <MozziGuts.h>
 
 #define CONTROL_RATE 64 // powers of 2 please
 
-#define  StickThresh  0.2f                           // joystick threshold for change (0-1)
+#define LEFT 0
+#define RIGHT 1
+#define UP 2
+
+int bumpy_input = 0;
+
+int rollpitch = 0;
 
 #include <Oscil.h> // oscillator template
 #include <tables/sin2048_int8.h> // sine table for oscillator
+#include <tables/triangle2048_int8.h> // triangle table for oscillator
+#include <tables/saw2048_int8.h> // saw table for oscillator
 #include <RollingAverage.h>
 
 // use: Oscil <table_size, update_rate> oscilName (wavetable), look in .h file of table #included above
-Oscil <SIN2048_NUM_CELLS, AUDIO_RATE> aSin0(SIN2048_DATA);
-Oscil <SIN2048_NUM_CELLS, AUDIO_RATE> aSin1(SIN2048_DATA);
+Oscil <SIN2048_NUM_CELLS, AUDIO_RATE> aSin(SIN2048_DATA);
+Oscil <TRIANGLE2048_NUM_CELLS, AUDIO_RATE> aTri(TRIANGLE2048_DATA);
+Oscil <SAW2048_NUM_CELLS, AUDIO_RATE> aSaw(SAW2048_DATA);
 
 // use: RollingAverage <number_type, how_many_to_average> myThing
-RollingAverage <float, 32> kAverage; // how_many_to_average has to be power of 2
-int averaged;
+// how_many_to_average has to be power of 2
+RollingAverage <float, 8> rollLAverage;
+RollingAverage <float, 8> rollRAverage;
+RollingAverage <float, 8> pitchAverage;
+RollingAverage <float, 4> xAverage;
+RollingAverage <float, 4> yAverage;
+int rollLeft;
+int rollRight;
+int pitch;
+int xStick;
+int yStick;
 
-unsigned char gain = 255;
-float val = 0;
+int play = 0;
 
 void setup(){
   uint8_t error;
   
-  // initialize the Nunchuck
-  
-  Serial.begin ( 19200 );
-  
   error = Nunchuck.begin ();
-  
-  startMozzi(CONTROL_RATE); // set a control rate of 64 (powers of 2 please)
   
   /*if ( error )
   {
@@ -40,96 +51,76 @@ void setup(){
     while ( 1 );
   }*/
   
-  aSin0.setFreq(440); // set the frequency
-  aSin1.setFreq(440); // set the frequency  
+  startMozzi(CONTROL_RATE); // set a control rate of 64 (powers of 2 please)
+  
+  // set the frequency
+  aSin.setFreq(440);
+  aTri.setFreq(440);
+  aSaw.setFreq(440);
 }
 
 void updateControl(){
-  uint8_t error;
+   // read the input device
 
-  static bool  lastStickUp = false;
-  static bool  lastStickDn = false;
-  static bool  lastStickLf = false;
-  static bool  lastStickRt = false;
-  
-  
-  // read the input device
-
-  Nunchuck.update(); 
-    
-  // compute stick postion as a 4 way switch
-    
-   float xStick = Nunchuck.getXStick();
-   float yStick = Nunchuck.getYStick();
+   Nunchuck.update(); 
    
-   bool stickDn = ( yStick < - StickThresh ? true : false );
-   bool stickUp = ( yStick >   StickThresh ? true : false );
-
-   bool stickLf = ( xStick < - StickThresh ? true : false );
-   bool stickRt = ( xStick >   StickThresh ? true : false );
-   
-   // in harmonizer mode ( no CButton ) use roll for note and use stick to control key changes
-   
-   if ( Nunchuck.getCButton() )
+   if ( !Nunchuck.getZButton() )
    { 
-     //float bumpy_input = map(Nunchuck . getRoll(), -180, 180, 0, 800);
-     float bumpy_input = map(Nunchuck . getPitch(), 0, 180, 0, 800);
-     averaged = kAverage.next(bumpy_input);
+     bumpy_input = constrain(Nunchuck . getRoll(), -180, -1);
+     bumpy_input = map(-bumpy_input, 0, 180, 0, 800);
+     rollLeft = rollLAverage.next(bumpy_input);
+     bumpy_input = constrain(Nunchuck . getRoll(), 0, 180);
+     bumpy_input = map(bumpy_input, 0, 180, 0, 800);
+     rollRight = rollRAverage.next(bumpy_input);
+     bumpy_input = constrain(Nunchuck . getPitch(), 100, 174);
+     bumpy_input = map(bumpy_input, 100, 174, 0, 800);
+     pitch = pitchAverage.next(bumpy_input);
 
-     aSin0.setFreq(bumpy_input);
-     aSin1.setFreq(averaged);
-     //val = map(Nunchuck . getRoll(), -180, 180, -3, +3);
-     //gain = gain + val;
-     // use the 4 way switch to change key ( L/R = major / minor , U/D = major 3rd )
-     //if ( stickUp && lastStickUp ) { gain = gain +3; }
-     //if ( stickDn && lastStickDn ) { gain = gain -3; }
-     //if ( stickUp && !lastStickUp ) { Synth.setKey ( Synth.getPendingKey()  + 5 );  Synth.setKeyMode ( 0 ); }
-     //if ( stickDn && !lastStickDn ) { Synth.setKey ( Synth.getPendingKey()  - 5 );  Synth.setKeyMode ( 1 ); }
-     //if ( stickLf && !lastStickLf ) { Synth.setKeyMode ( 1 ); }
-     //if ( stickRt && !lastStickRt ) { Synth.setKeyMode ( 0 ); }
+     aSin.setFreq(rollLeft);
+     aTri.setFreq(rollRight);
+     aSaw.setFreq(pitch);
      
+     play = 1;
    }
    
-   
-   // in arpeggiator mode use roll for the stick to control the arpeggiator
-      
-   else
-   {
-     gain = gain - 3;
-     // set the arpeggiator input with roll axis
- 
-     //Synth.setArpOctave ( -1.0f + 4.0f * Nunchuck . getRoll()  / 90.0f   );
-  
-  
-      // L/R changes tempo,  U/D changes legato
-
-     //if ( stickUp && !lastStickUp ) Synth.setArpLegato ( Synth.getArpLegato() + 0.1f );
-     //if ( stickDn && !lastStickDn ) Synth.setArpLegato ( Synth.getArpLegato() - 0.1f );
-     //if ( stickLf && !lastStickLf ) Synth.setArpTempo  ( Synth.getArpTempo()   - 10 );
-     //if ( stickRt && !lastStickRt ) Synth.setArpTempo  ( Synth.getArpTempo()   + 10 );
-     
-   }
-
-  
-  // update shadow state
-  
-  lastStickUp = stickUp;
-  lastStickDn = stickDn;
-  lastStickLf = stickLf;
-  lastStickRt = stickRt;
-
-  //Nunchuck.printReal();
-  //Serial.println();
+   else{play = 0;}
 }
 
-/*
+
 int updateAudio(){
-  return (aSin.next()* gain)>>8; // return an int signal centred around 0
-}
-*/
-int updateAudio(){
-  //return 3*(aSin0.next()+aSin1.next())>>2;
-  return (aSin1.next());
+  if (play)
+  {
+    if ( pitch >= rollLeft)
+    {
+      if ( pitch >= rollRight)
+      { return aSaw.next(); }
+      else
+      { return aTri.next(); }
+    }
+    else if ( pitch >= rollRight)
+    {
+      if ( pitch >= rollLeft)
+      { return aSaw.next(); }
+      else
+      { return aSin.next(); }
+    }
+    else if ( rollRight >= rollLeft)
+    {
+      if ( pitch >= rollRight)
+      { return aSaw.next(); }
+      else
+      { return aTri.next(); }
+    }
+    else if ( rollLeft >= rollRight)
+    {
+      if ( pitch >= rollLeft)
+      { return aSaw.next(); }
+      else
+      { return aSin.next(); }
+    }
+  }
+  
+  return 0;
 }
 
 void loop(){
