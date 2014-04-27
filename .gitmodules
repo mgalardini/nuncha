@@ -1,0 +1,3 @@
+[submodule "Mozzi"]
+	path = Mozzi
+	url = git@github.com:mgalardini/Mozzi.git
