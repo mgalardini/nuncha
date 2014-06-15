@@ -2,7 +2,6 @@
 #include "Nunchuck.h"
 #include <Wire.h> 
 #include <MozziGuts.h>
-#include <LowPassFilter.h>
 #include <ADSR.h>
 
 #define CONTROL_RATE 128 // powers of 2 please
@@ -24,29 +23,24 @@ Oscil <SIN2048_NUM_CELLS, AUDIO_RATE> aLeft(SIN2048_DATA);
 #include <RollingAverage.h>
 // use: RollingAverage <number_type, how_many_to_average> myThing
 // how_many_to_average has to be power of 2
-RollingAverage <float, 16> rollLAverage;
-RollingAverage <float, 16> rollRAverage;
+RollingAverage <float, 4> rollLAverage;
+RollingAverage <float, 4> rollRAverage;
 RollingAverage <float, 16> pitchAverage;
-RollingAverage <float, 4> xAverage;
-RollingAverage <float, 4> yAverage;
+#define  StickThresh  0.5f
 int rollLeft;
 int rollRight;
 int pitch;
-int xStick;
-int yStick;
-
-LowPassFilter lpf;
 
 ADSR <CONTROL_RATE, CONTROL_RATE> envelope;
 ADSR <CONTROL_RATE, CONTROL_RATE> envelope2;
 
-unsigned char volumeLeft;
-unsigned char volumeRight;
-unsigned char volumePitch;
+ADSR <CONTROL_RATE, CONTROL_RATE> envelope3;
+ADSR <CONTROL_RATE, CONTROL_RATE> envelope4;
 
-int pressed = 0;
-int unpressed = 0;
-int play = 0;
+int zpressed = 0;
+int cpressed = 0;
+int znote = 0;
+int cnote = 0;
 
 unsigned int duration, attack, decay, sustain, release_ms;
 
@@ -84,64 +78,98 @@ void setup(){
   envelope2.setADLevels(255, 100);
   envelope2.setTimes(attack,decay,sustain,release_ms);
 
-  lpf.setResonance(1);
-  
-  lpf.setCutoffFreq(128);
+  attack = 100;
+  decay = 200;
+  sustain = 500;
+  release_ms = 1000;
+  envelope3.setADLevels(255, 100);
+  envelope3.setTimes(attack,decay,sustain,release_ms);
+
+  envelope4.setADLevels(255, 100);
+  envelope4.setTimes(attack,decay,sustain,release_ms);
 }
 
 void updateControl(){
+
    Nunchuck.update(); 
 
    if( Nunchuck.getZButton() )
    {
-     pressed++;
-     if( pressed >= 1 )
+     zpressed++;
+     if( zpressed >= 1 )
      {
        envelope.noteOn();
        envelope2.noteOn();
-       pressed = 0;
+       zpressed = 0;
+       cnote = 0;
+       znote = 1;
      }
    }
+   else if( Nunchuck.getCButton() )
+   {
+     cpressed++;
+     if( cpressed >= 1 )
+     {
+       envelope3.noteOn();
+       envelope4.noteOn();
+       cpressed = 0;
+       cnote = 1;
+       znote = 0;
+     }
+       
+   }
+   float yStick = Nunchuck.getYStick();
+   
+   bool stickDn = ( yStick < - StickThresh ? true : false );
+   bool stickUp = ( yStick >   StickThresh ? true : false );
 
      constrain_input = constrain(Nunchuck . getRoll(), -180, -1);
-     bumpy_input = map(-constrain_input, 0, 180, 11, 0);
+     bumpy_input = map(-constrain_input, 1, 180, 0, 11);
      rollLeft = rollLAverage.next(bumpy_input);
 
      constrain_input = constrain(Nunchuck . getRoll(), 0, 180);
-     bumpy_input = map(constrain_input, 0, 180, 11, 0);
+     bumpy_input = map(constrain_input, 0, 180, 0, 11);
      rollRight = rollRAverage.next(bumpy_input);
 
      constrain_input = constrain(Nunchuck . getPitch(), 18, 174);
      bumpy_input = map(constrain_input, 100, 150, 440, 880);
      pitch = pitchAverage.next(bumpy_input);
-     
-     constrain_input = constrain(Nunchuck . getRaw()->yStick, 31, 129);
-     bumpy_input = map(-constrain_input, -129, -31, 200, 1000);
-     yStick = yAverage.next(bumpy_input);     
+   
+   if ( stickUp )
+   {
+      pitch = pitch *2;
+   }
+   if ( stickDn )
+   {
+      pitch = pitch/2;
+   }
 
-     aSin.setFreq((int)pitch);
-     if (rollRight == 0 )
+     aSin.setFreq((int)pitch);   
+     if (rollRight < rollLeft )
      {
        aRight.setFreq(0);
+        aLeft.setFreq( (int)((pitch/2) + 18*rollLeft));
      }
      else
      {
-       aRight.setFreq((int)((2*pitch) + rollRight*73));
-       //aRight.setFreq((int)((2*pitch) - rollRight*73));
-     }
-     if (rollLeft == 0 )
-     {
        aLeft.setFreq(0);
-     }
-     else{
-       aLeft.setFreq( (int)((pitch/2)+ 18*rollLeft));
-       //aLeft.setFreq( (int)((pitch/2)- 18*rollLeft));
+       aRight.setFreq((int)((pitch/2) + 18*rollRight));
      }
    envelope.update();
    envelope2.update();  
- 
-   gain = envelope.next();
-   gain2 = envelope2.next();
+   envelope3.update();
+   envelope4.update();  
+   
+   if( znote )
+   {
+     gain = envelope.next();
+     gain2 = envelope2.next();
+   }
+   else
+   {
+     gain = envelope3.next();
+     gain2 = envelope4.next();
+   }
 }
 
 
@@ -150,11 +178,11 @@ int updateAudio(){
     
     if( rollRight == 0 )
     {
-      synth = lpf.next(((long)gain * aSin.next() + (int)gain2 * aLeft.next()) >> 9 );
+      synth = ((long)gain * aSin.next() + (int)gain2 * aLeft.next()) >> 9 ;
     }
     else
     {
-      synth = lpf.next(((long)gain * aSin.next() + (int)gain2 * aRight.next()) >> 9);
+      synth = ((long)gain * aSin.next() + (int)gain2 * aRight.next()) >> 9;
     }
     return synth;
 }
