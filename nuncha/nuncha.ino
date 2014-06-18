@@ -135,7 +135,7 @@ void updateControl(){
    
    if ( stickUp )
    {
-      pitch = pitch *4;
+      pitch = pitch *2;
    }
    if ( stickDn )
    {
