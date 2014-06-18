@@ -113,16 +113,20 @@ void updateControl(){
        
    }
    float yStick = Nunchuck.getYStick();
-   
+   float xStick = Nunchuck.getXStick();  
+ 
    bool stickDn = ( yStick < - StickThresh ? true : false );
    bool stickUp = ( yStick >   StickThresh ? true : false );
 
+   bool stickLf = ( xStick < - StickThresh ? true : false );
+   bool stickRt = ( xStick >   StickThresh ? true : false );
+   
      int Linput = constrain(Nunchuck . getRoll(), -180, -1);
-     int BLinput = map(-Linput, 1, 180, 1, 11);
+     int BLinput = map(-Linput, 1, 180, 1, 33);
      rollLeft = rollLAverage.next(BLinput);
 
      int Rinput = constrain(Nunchuck . getRoll(), 0, 180);
-     int BRinput = map(Rinput, 0, 180, 1, 11);
+     int BRinput = map(Rinput, 0, 180, 1, 33);
      rollRight = rollRAverage.next(BRinput);
 
      int constrain_input = constrain(Nunchuck . getPitch(), 18, 174);
@@ -131,23 +135,32 @@ void updateControl(){
    
    if ( stickUp )
    {
-      pitch = pitch *2;
+      pitch = pitch *4;
    }
    if ( stickDn )
    {
+      pitch = pitch/4;
+   }
+   
+   if ( stickLf )
+   {
       pitch = pitch/2;
+   }
+   if ( stickRt )
+   {
+      pitch = pitch*2;
    }
 
      aSin.setFreq((int)pitch);   
      if (rollLeft > rollRight )
      {
        aRight.setFreq(0);
-        aLeft.setFreq( (int)((pitch/2) + 18*rollLeft));
+        aLeft.setFreq( (int)((pitch/2) + rollLeft));
      }
      else
      {
        aLeft.setFreq(0);
-       aRight.setFreq((int)((pitch/2) + 18*rollRight));
+       aRight.setFreq((int)((pitch/2) + rollRight));
      }
    envelope.update();
    envelope2.update();  
