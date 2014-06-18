@@ -5,12 +5,6 @@
 #include <ADSR.h>
 
 #define CONTROL_RATE 128 // powers of 2 please
-
-int bumpy_input = 0;
-int constrain_input = 0;
-
-int rollpitch = 0;
-
 #include <Oscil.h> // oscillator template
 #include <tables/sin2048_int8.h> // sine table for oscillator
 
@@ -123,16 +117,16 @@ void updateControl(){
    bool stickDn = ( yStick < - StickThresh ? true : false );
    bool stickUp = ( yStick >   StickThresh ? true : false );
 
-     constrain_input = constrain(Nunchuck . getRoll(), -180, -1);
-     bumpy_input = map(-constrain_input, 1, 180, 0, 11);
-     rollLeft = rollLAverage.next(bumpy_input);
+     int Linput = constrain(Nunchuck . getRoll(), -180, -1);
+     int BLinput = map(-Linput, 1, 180, 1, 11);
+     rollLeft = rollLAverage.next(BLinput);
 
-     constrain_input = constrain(Nunchuck . getRoll(), 0, 180);
-     bumpy_input = map(constrain_input, 0, 180, 0, 11);
-     rollRight = rollRAverage.next(bumpy_input);
+     int Rinput = constrain(Nunchuck . getRoll(), 0, 180);
+     int BRinput = map(Rinput, 0, 180, 1, 11);
+     rollRight = rollRAverage.next(BRinput);
 
-     constrain_input = constrain(Nunchuck . getPitch(), 18, 174);
-     bumpy_input = map(constrain_input, 100, 150, 440, 880);
+     int constrain_input = constrain(Nunchuck . getPitch(), 18, 174);
+     int bumpy_input = map(constrain_input, 18, 174, 440, 880);
      pitch = pitchAverage.next(bumpy_input);
    
    if ( stickUp )
@@ -145,7 +139,7 @@ void updateControl(){
    }
 
      aSin.setFreq((int)pitch);   
-     if (rollRight < rollLeft )
+     if (rollLeft > rollRight )
      {
        aRight.setFreq(0);
         aLeft.setFreq( (int)((pitch/2) + 18*rollLeft));
@@ -170,13 +164,14 @@ void updateControl(){
      gain = envelope3.next();
      gain2 = envelope4.next();
    }
+
 }
 
 
 int updateAudio(){
     int synth;
     
-    if( rollRight == 0 )
+    if( rollLeft > rollRight )
     {
       synth = ((long)gain * aSin.next() + (int)gain2 * aLeft.next()) >> 9 ;
     }
