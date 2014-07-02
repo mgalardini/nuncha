@@ -14,7 +14,7 @@ Acknowledgements
 
 * Brandon Invergo
 * Michele Andreuccetti
-* Valerio Orlandin
+* Valerio Orlandini
 * Gabriella Denisi
 * Irene Oppo
 * The Mozzi community
