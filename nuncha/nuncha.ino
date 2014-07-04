@@ -70,7 +70,7 @@ void setup(){
   attack = 50;
   decay = 50;
   sustain = 200;
-  release_ms = 400;
+  release_ms = 1000;
   envelope.setADLevels(255, 100);
   envelope.setTimes(attack,decay,sustain,release_ms);
 
