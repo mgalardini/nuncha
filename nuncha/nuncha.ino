@@ -161,12 +161,12 @@ void updateControl(){
      aSin1.setFreq((int)pitch);   
      if (rollLeft > rollRight )
      {
-       aRight1.setFreq(0);
+       aRight1.setFreq( rollLeft );
        aLeft1.setFreq( rollLeft );
      }
      else
      {
-       aLeft1.setFreq(0);
+       aLeft1.setFreq( rollRight );
        aRight1.setFreq( rollRight );
      }
 
